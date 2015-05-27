@@ -1,0 +1,207 @@
+---
+title: "The New York Taxi Dataset"
+output:
+  ioslides_presentation:
+    smaller: yes
+    widescreen: yes
+  slidy_presentation: default
+author: Giorgio Ballardin
+date: "May 28, 2015"
+subtitle: Exploring FOIL data
+---
+
+
+```{r echo=FALSE, message=FALSE}
+#load necessary files here
+sample_df <- readRDS('sample_df.RDS')
+load_curve_xts <- readRDS('load_curve_xts.RDS')
+ggmap_df <- readRDS('ggmap_df.RDS')
+```
+
+# Dataset description | A wealth of taxi trips
+
+## A few words about this dataset
+
+* [Chris Whong](http://chriswhong.com/open-data/foil_nyc_taxi/) submitted a FOIL (The Freedom of Information Law) request to the New York City Taxi & Limousine Commission (NYCT&L).
+* The entire dataset spans 2010-2013 and consists of approximately __700M trips__.  
+* It is a big dataset from public data standards.  
+    + The flight delay dataset, normally referenced for out-of-memory calculations, is 100M+ record long.
+* Structure:  
+    + Trip dataset  
+    + Fare dataset  
+* Very granular: timestamp, longitude of pickup and dropoff locations.  
+* The data was relatively clean to begin with, except for a few cases like trips to the North Pole, the middle of the Atlantic Ocean, or that took no time at all. 
+
+## What does the data look like?
+```{r, echo=FALSE, message=FALSE}
+library(DT)
+library(magrittr)
+library(dplyr)
+rownames(sample_df) <- NULL
+datatable(sample_df[, c("fare_amount","surcharge","mta_tax","tip_amount","tolls_amount","total_amount")], options = list(iDisplayLength = 3), rownames = FALSE)
+datatable(sample_df[, c("passenger_count","trip_time_in_secs","trip_distance","pickup_longitude","pickup_latitude")], options = list(iDisplayLength = 3), rownames = FALSE)
+```
+
+Or it can be seen on a [map](https://gballardin.shinyapps.io/nytaxiappv2/)
+
+## Trip heatmap {.flexbox .vcenter}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width = 5.5, fig.height = 5.5}
+library(ggmap)
+ny = c(lon = mean(ggmap_df$pickup_longitude), lat =  mean(ggmap_df$pickup_latitude))
+ny.map = get_map(location = ny, zoom = 13, color = "bw")
+ggmap(ny.map) + geom_density2d(data = ggmap_df, aes(x = pickup_longitude, y = pickup_latitude), size = 0.3) + #, extent = "device"
+  stat_density2d(data = ggmap_df, aes(x = pickup_longitude, y = pickup_latitude, fill = ..level.., alpha = ..level..), size = 0.01, bins = 16, geom = "polygon") +
+  scale_fill_gradient(low = "green", high = "red", guide = FALSE) + scale_alpha(range = c(0, 0.3), guide = FALSE)
+```
+
+## Daily trip load curve {.smaller .flexbox .vcenter}
+* Similar shape to other human activities (electricity, website visits, etc.)
+* 4-6pm dropoff is apparently due to drivers changing for the [evening shift](http://chriswhong.com/wp-content/uploads/2014/03/taxi1.png).  
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width = 10, fig.height = 4.5}
+library(dygraphs)
+library(dplyr)
+library(magrittr)
+library(lubridate)
+library(xts)
+#test <- df %>% mutate(hour = as.POSIXct(round(pickup_datetime, 'hours'))) %>% group_by(hour) %>% dplyr::summarise(n=n()) %>%as.data.frame()
+#load_curve_xts <- as.xts(x = test[,'n'], order.by = test[,'hour'])
+#saveRDS(load_curve_xts, './pres/load_curve_xts.RDS')
+dygraph(load_curve_xts, main = "Trip load curve") %>% 
+  dyRangeSelector(dateWindow = c("2013-01-01", "2013-01-31"))
+```
+
+# The analysis | Applying stochastic optimization
+
+## What goal to pursue?
+<div class="blue2">
+**Passengers** 
+</div>
+- **Goal:** go from point A to B at a given point in time.
+- **Solution:** compare alternative means of transportation (taxi, subway, bus, bicyle, walking). Include costs and opportunity costs of individual decision makers.
+- **Issues:** access to opportunity costs. While one could build a theoretical model, it would be hard to use this dataset to provide evidence-based recommendations.
+
+
+
+<div class="blue2">
+**City of New York**
+</div>
+- **Goals:** increase revenues (e.g. via 'surcharge': extra fees, such as rush hour and overnight surcharges) and/or allocate congestion more efficiently.
+- **Solution:** for example, instead of having a binary rush-hour charge, tune charge to demand curve. Alternatively, create a bid-based system for surcharges.
+- **Issues:** continuous-time surcharge can be calculated, but it would be hard to assess its benefits, since we can't observe a counterfactual. One option in the real world would be to run a test (split taxi drives between old and new policy).
+
+## More interesting problem
+<div class="blue2">
+**Optimal taxi rider routing**
+</div>
+- **Goal:** maximize expected profit. On a given day, define the final place and time where and when to end and back-calculate optimial routing.
+- **Solution:** stochastic optimization with [Bellman equation](http://en.wikipedia.org/wiki/Bellman_equation). Optimize (profit) in discrete time steps and work out best place to start the working day.
+- **Implementation:**
+    - Partition the pickup locations using k-means clustering (step #1 in modeling script).
+    - With the classification from above, assign dropoff locations with Support Vector Machines (step #2 in modeling script).
+    - Write optimal routing algorithm (step #3 in modeling script).
+
+## Clustering pickup locations
+
+```{r, echo=FALSE, message=FALSE, fig.width = 10, fig.height = 4.5}
+readRDS('./cluster_leaf.RDS')
+```
+
+## Optimal routing algorithm - 1 {.smaller}
+
+I developed two algorithms:  
+1. One that optimizes routing with constant time windows (e.g. one hour).  
+2. One that adjust the factor in the change in time window based on the optimal solution.  
+
+<div class="blue2">**Setup**</div>  
+
+Input:  
+1. 'beg_of_day'. When the working day begins.  
+2. 'end_of_day'. When the working day ends.  
+3. 'home_cluster'. Which location cluster the taxi driver would like to end the day.  
+4. 'minute_range'. Factor in some tolerance for target end time of each ride.  
+
+```{r, echo = TRUE, eval = FALSE}
+beg_of_day <- as.POSIXct(strptime('2013-01-16 17:00:00', format = "%Y-%m-%d %H:%M:%S"))
+end_of_day <- as.POSIXct(strptime('2013-01-16 18:00:00', format = "%Y-%m-%d %H:%M:%S"))
+home_cluster <- 6
+minute_range <- 5
+```
+
+## Optimal routing algorithm - 2
+<div class="blue2">**Transition matrix**</div>    
+* Modeled as a [Markov Chain](http://en.wikipedia.org/wiki/Markov_chain)    
+* Expected payoff: sum(payoff_i * proability_i) for each origin i  
+
+<div class="blue2">**Pseudo-code**</div>  
+* If(first iteration):  
+    + Compute transition matrix.  
+    + Choose origin that maximises expected profit.  
+    + Write result out.  
+* Else:  
+    + Compute transition matrix.  
+    + Choose origin that maximises expected profit.  
+    + Write result out.  
+
+## Example of optimal solution results
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(DT)
+library(magrittr)
+library(dplyr)
+library(knitr)
+#rownames(sample_df) <- NULL
+df <- readRDS('./opt_results.RDS') %>% head(8)
+df[, c(1,2,5,3,4)] %>% kable(.)
+#datatable(., options = list(iDisplayLength = 10))
+```
+
+## How does optimal routing look like? {.smaller .columns-2 }
+```{r, echo=FALSE, message=FALSE}
+library(magrittr)
+library(dplyr)
+library(knitr)
+library(RColorBrewer)
+x <- readRDS('./opt_results.RDS') %>% group_by(orig_cluster, dest_cluster) %>%
+  dplyr::summarize(n=n()) %>% as.data.frame()
+x <- tidyr::spread(x, orig_cluster, n) %>% as.matrix()
+rownames(x) <- x[, 1]
+x <- x[,2:ncol(x)]
+mypalette<-brewer.pal(9,"Blues")
+heatmap(x
+        , Rowv=NA
+        , Colv=NA
+        , col = mypalette
+        , scale="column"
+        , margins=c(10,10))
+```
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(networkD3)
+links <- readRDS('./opt_results.RDS') %>% group_by(orig_cluster, dest_cluster) %>%
+  dplyr::summarize(n=n()) %>% as.data.frame()
+links$orig_cluster <- as.integer(as.integer(links$orig_cluster)-1)
+links$dest_cluster <- as.integer(as.integer(links$dest_cluster)-1)
+nodes <- data.frame(name = (1:6), group = (1:6))
+forceNetwork(Links = links, Nodes = nodes, Source = "orig_cluster",
+             Target = "dest_cluster", Value = "n", NodeID = "name",
+             Group = "group", opacity = 1, height = 700, width = 700
+             , linkDistance = 100)
+```  
+
+
+## Areas for improvement
+<div class="blue2">**Easy**</div>  
+* Do not limit end location (cluster) to the desired one. Here's how:  
+    + Calculate distance from end location to any other cluster. Compute cost of driving there.  
+    + Compute opportunity cost (forgone profit at that time of the day). The data is all there already.  
+* Improve k-Means fit by running 
+
+<div class="blue2">**Hard**</div>  
+* How often to re-optimize?  
+    + Not an easy dynamic programming question.  
+    + Some good heuristic may be inferred from the data, but analytical solution is tougher.  
+
+## Potential applications  
+Stand-alone app, or integrated in apps like Uber's
+
+Code used download, clean, analyse, visualize, and present this dataset can be found on [GitHub](https://github.com/gballardin/nytaxi).
