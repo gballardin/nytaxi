@@ -128,16 +128,30 @@ similar problem to optimizing water storage (dam) for electricity production or 
     - With the classification from above, assign dropoff locations with Support Vector Machines (step #2 in modeling script).
     - Write optimal routing algorithm (step #3 in modeling script).
 
-## Clustering pickup locations
 
+## Clustering pickup locations
 ```{r, echo=FALSE, message=FALSE, fig.width = 10, fig.height = 4.5}
-library(leaflet)
+#df[sample(nrow(df), 1e4),] %>%
+#  select(pickup_longitude, pickup_latitude, cluster_pickup) %>%
+#  dplyr::rename(lng = pickup_longitude, lat = pickup_latitude, cluster = cluster_pickup) %>%
+#  saveRDS(., './pres/cluster_df.RDS')library(leaflet)
+ 
+## uncomment this section at the end
+#library(RColorBrewer)
+#library(dplyr)
+#pal <- brewer.pal(6, "Set1")#readRDS('cluster_pal.RDS') #colorFactor(brewer.pal(6, "Set1"), domain = 1:6)
+#cluster_df <- readRDS('cluster_df.RDS')
+#leaflet(cluster_df) %>% addTiles() %>%
+#addCircleMarkers(
+#  color = ~pal(cluster),
+#  stroke = FALSE, fillOpacity = 0.5)
 readRDS('./cluster_leaf.RDS')
-```
+``` 
+
 
 ## Optimal routing algorithm - 1 {.smaller}
 
-I developed two algorithms:  
+I developed **two algorithms**:  
 1. One that optimizes routing with constant time windows (e.g. one hour).  
 2. One that optimizes routing over length-varying time windows (exactly from one ride to the next).  
 
@@ -157,18 +171,24 @@ minute_range <- 5
 ```
 
 ## Optimal routing algorithm - 2
+<div class="note">
+draw a case on the whiteboard
+</div>
 <div class="blue2">**Transition matrix**</div>    
 * Modeled as a [Markov Chain](http://en.wikipedia.org/wiki/Markov_chain)    
-* Expected payoff: sum(payoff_i * proability_i) for each origin i  
+* Maximise expected payoff given destination cluster: $\sum _{i}(prob_i * payoff_i)$  
+* Derive optimal origin cluster from point above
 
 <div class="blue2">**Pseudo-code**</div>  
+Repeat until beginning time is reached:  
+
 * If(first iteration):  
-    + Compute transition matrix.  
-    + Choose origin that maximises expected profit.  
-    + Write result out.  
+    + Compute transition matrix  
+    + Choose origin that maximises expected profit given user-defined destination  
+    + Write result out  
 * Else:  
-    + Compute transition matrix.  
-    + Choose origin that maximises expected profit.  
+    + Compute transition matrix  
+    + Choose origin that maximises expected profit given pre-calculated destination from previous step  
     + Write result out.  
 
 ## Example of optimal solution results
@@ -185,6 +205,9 @@ df[, c(1,2,5,3,4)] %>% kable(.)
 ```
 
 ## How does optimal routing look like? {.smaller .columns-2 }
+<div class="notes">
+one way to validate the optimality of these results is by plotting the density function of the taxi drivers' profits over a given period of time and see how the optimal routing would stack against it.
+</div>
 ```{r, echo=FALSE, message=FALSE}
 library(magrittr)
 library(dplyr)
@@ -203,6 +226,7 @@ heatmap(x
         , scale="column"
         , margins=c(10,10))
 ```
+
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 library(networkD3)
 links <- readRDS('./opt_results.RDS') %>% group_by(orig_cluster, dest_cluster) %>%
@@ -216,24 +240,45 @@ forceNetwork(Links = links, Nodes = nodes, Source = "orig_cluster",
              , linkDistance = 100)
 ```  
 
+## Areas for improvement  
 
-## Areas for improvement
 <div class="blue2">**Easy**</div>  
-* Do not limit end location (cluster) to the desired one. Here's how:  
+* **Do not limit end location (cluster) to the desired one**. Here's how:  
     + Calculate distance from end location to any other cluster. Compute cost of driving there.  
     + Compute opportunity cost (forgone profit at that time of the day). The data is all there already.  
-* Factor in non-running times:
+* **Factor in non-running times**:
     + Chosen (meals, breaks)
     + Imposed (idle time)
-* Optimize for profit, instead of revenues:
-    + Calculate marginal ride cost (distance, gasoline price, )
+* **Optimize for profit**, instead of revenues:
+    + Calculate marginal ride cost (distance, gasoline price, car efficiency)
+    + Taxi drive opportunity cost (from this dataset)
 
-<div class="blue2">**Hard**</div>  
-* How often to re-optimize?  
+## Areas for improvement
+<div class="blue2">**More difficult**</div>  
+
+* **How often to re-optimize?**  
     + Not an easy dynamic programming question.  
     + Some good heuristic may be inferred from the data, but analytical solution is tougher.  
+* **Include risk aversion in the calculations**
+    + Do not just maximise profit, but the route that gives the optimal {profit, variance(profit)} tradeoff given the taxi driver preferences
 
 ## Potential applications  
-Stand-alone app, or integrated in apps like Uber's
+As far as I can tell, [Uber](https://www.uber.com/features) does not disclose information about the passenger destination at ping time. Reasons:  
 
-Code used download, clean, analyse, visualize, and present this dataset can be found on [GitHub](https://github.com/gballardin/nytaxi).
+1. Avoid ride 'cherry-picking'.  
+2. Cover the low end of the market (e.g. $5 ride).  
+
+A counter-argument is that freer information leads to a better market allocation. Intuition:  
+
+1. Decrease supply of unprofitable rides ($5 >> $8).  
+2. Increase supply of profitable rides ($45 >> $40).  
+
+Besides there is no point in asking a drive to take on negtive profit rides.
+
+With the appropriate data, which is the case for NYC, my algorithm could help Uber and other drivers make the decision whether to accept a ride ex-ante, based on expected profit calculations.  
+
+## Code  {.flexbox .vcenter}
+* Code used to download, clean, analyse, visualize, and present this dataset can be found on [GitHub](https://github.com/gballardin/nytaxi).  
+* Feel free to peruse, fork, and play with this dataset.
+
+![Octocat](Octocat.png)
