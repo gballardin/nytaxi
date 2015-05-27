@@ -21,11 +21,21 @@ ggmap_df <- readRDS('ggmap_df.RDS')
 # Dataset description | A wealth of taxi trips
 
 ## A few words about this dataset
+<div class="notes">
+turn on
+mypresentation.html?presentme=true
+turn off
+mypresentation.html?presentme=false
+
+GPS receivers allow such an extensive data collection
+Chris Whong accidentally learnt about this dataset and then followed suit with a FOIL request
+</div>
 
 * [Chris Whong](http://chriswhong.com/open-data/foil_nyc_taxi/) submitted a FOIL (The Freedom of Information Law) request to the New York City Taxi & Limousine Commission (NYCT&L).
-* The entire dataset spans 2010-2013 and consists of approximately __700M trips__.  
+* The entire dataset spans 2010-2013 and consists of approximately __700M trips__ split into various text files.  
 * It is a big dataset from public data standards.  
-    + The flight delay dataset, normally referenced for out-of-memory calculations, is 100M+ record long.
+    + The [flight delay dataset](http://www.transtats.bts.gov/DL_SelectFields.asp?Table_ID=236&DB_Short_Name=On-Time), normally referenced for out-of-memory calculations, is 100M+ record long.  
+    + Engineering challenge to deal with such a large dataset.
 * Structure:  
     + Trip dataset  
     + Fare dataset  
@@ -33,6 +43,17 @@ ggmap_df <- readRDS('ggmap_df.RDS')
 * The data was relatively clean to begin with, except for a few cases like trips to the North Pole, the middle of the Atlantic Ocean, or that took no time at all. 
 
 ## What does the data look like?
+<div class="notes">
+I worked on a sample of the dataset
+Here are some salient features that I have used in my analysis
+show how:
+- total amount is broken down (interesting applications about taxes, tips). how to change peoples' decisions.
+- geo-time dimensions
+- show a few extra records
+
+map:
+- on the web, but it is slower. run locally 
+</div>
 ```{r, echo=FALSE, message=FALSE}
 library(DT)
 library(magrittr)
@@ -72,6 +93,10 @@ dygraph(load_curve_xts, main = "Trip load curve") %>%
 ```
 
 # The analysis | Applying stochastic optimization
+<div class="notes">
+- I wanted to something different the usual statistical analysis that I normally do
+- Re-use what I learned in energy and from my economics background
+</div>
 
 ## What goal to pursue?
 <div class="blue2">
@@ -81,8 +106,6 @@ dygraph(load_curve_xts, main = "Trip load curve") %>%
 - **Solution:** compare alternative means of transportation (taxi, subway, bus, bicyle, walking). Include costs and opportunity costs of individual decision makers.
 - **Issues:** access to opportunity costs. While one could build a theoretical model, it would be hard to use this dataset to provide evidence-based recommendations.
 
-
-
 <div class="blue2">
 **City of New York**
 </div>
@@ -91,10 +114,14 @@ dygraph(load_curve_xts, main = "Trip load curve") %>%
 - **Issues:** continuous-time surcharge can be calculated, but it would be hard to assess its benefits, since we can't observe a counterfactual. One option in the real world would be to run a test (split taxi drives between old and new policy).
 
 ## More interesting problem
+<div class="notes">
+similar problem to optimizing water storage (dam) for electricity production or as storage
+</div>
+
 <div class="blue2">
 **Optimal taxi rider routing**
 </div>
-- **Goal:** maximize expected profit. On a given day, define the final place and time where and when to end and back-calculate optimial routing.
+- **Goal:** maximize expected profit. On a given day, define the final place and time where and when to end and back-calculate optimal routing.
 - **Solution:** stochastic optimization with [Bellman equation](http://en.wikipedia.org/wiki/Bellman_equation). Optimize (profit) in discrete time steps and work out best place to start the working day.
 - **Implementation:**
     - Partition the pickup locations using k-means clustering (step #1 in modeling script).
@@ -104,6 +131,7 @@ dygraph(load_curve_xts, main = "Trip load curve") %>%
 ## Clustering pickup locations
 
 ```{r, echo=FALSE, message=FALSE, fig.width = 10, fig.height = 4.5}
+library(leaflet)
 readRDS('./cluster_leaf.RDS')
 ```
 
@@ -111,7 +139,7 @@ readRDS('./cluster_leaf.RDS')
 
 I developed two algorithms:  
 1. One that optimizes routing with constant time windows (e.g. one hour).  
-2. One that adjust the factor in the change in time window based on the optimal solution.  
+2. One that optimizes routing over length-varying time windows (exactly from one ride to the next).  
 
 <div class="blue2">**Setup**</div>  
 
@@ -194,7 +222,11 @@ forceNetwork(Links = links, Nodes = nodes, Source = "orig_cluster",
 * Do not limit end location (cluster) to the desired one. Here's how:  
     + Calculate distance from end location to any other cluster. Compute cost of driving there.  
     + Compute opportunity cost (forgone profit at that time of the day). The data is all there already.  
-* Improve k-Means fit by running 
+* Factor in non-running times:
+    + Chosen (meals, breaks)
+    + Imposed (idle time)
+* Optimize for profit, instead of revenues:
+    + Calculate marginal ride cost (distance, gasoline price, )
 
 <div class="blue2">**Hard**</div>  
 * How often to re-optimize?  

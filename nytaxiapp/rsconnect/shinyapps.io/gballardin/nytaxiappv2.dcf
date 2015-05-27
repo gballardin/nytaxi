@@ -1,8 +1,8 @@
 name: nytaxiappv2
 account: gballardin
 server: shinyapps.io
-bundleId: 193789
+bundleId: 194201
 url: https://gballardin.shinyapps.io/nytaxiappv2
-when: 1432698159.80285
+when: 1432758076.97101
 asMultiple: FALSE
 asStatic: FALSE

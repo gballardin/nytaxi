@@ -15,7 +15,6 @@ library("lubridate")
 # nytaxi_df <- nytaxi_df[sample(1:nrow(nytaxi_df), smpl_size),]
 # saveRDS(nytaxi_df, 'nytaxi_df.RDS')
 nytaxi_df <- readRDS('nytaxi_df.RDS')
-str(nytaxi_df)
 
 # summary plot munging
 nytaxi_df$a_date <- as.Date(nytaxi_df$pickup_datetime)
@@ -42,7 +41,7 @@ colnames(d2) <- c("a_date", "n")
 
 # colour paletters
 pal <- brewer.pal(3, "Set1")
-cont_pal_time <- colorRampPalette(c('black', 'yellow', 'black'))(24)
+cont_pal_time <- colorRampPalette(c('black', 'yellow', 'black'))(12)
 cont_pal_pass <- colorRampPalette(c('yellow', 'red'))(6)
 
 # clean table for dt

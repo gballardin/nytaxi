@@ -53,7 +53,7 @@ $( 'div#mymap' ).append(spinner.el);"),
         hr(),
         p("Under active development by Giorgio Ballardin", 
         "code available on ",
-        a("github", href="https://github.com/blmoore/blackspot"), #ADD public repo here
+        a("github", href="https://github.com/gballardin/nytaxi"),
           "(original Shiny code adapted from",
         a("Blackspot", href="https://github.com/blmoore/blackspot"), 
           "by Benjamin Moore)."),
