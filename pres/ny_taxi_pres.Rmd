@@ -33,13 +33,13 @@ Chris Whong accidentally learnt about this dataset and then followed suit with a
 
 * [Chris Whong](http://chriswhong.com/open-data/foil_nyc_taxi/) submitted a FOIL (The Freedom of Information Law) request to the New York City Taxi & Limousine Commission (NYCT&L).
 * The entire dataset spans 2010-2013 and consists of approximately __700M trips__ split into various text files.  
-* It is a big dataset from public data standards.  
-    + The [flight delay dataset](http://www.transtats.bts.gov/DL_SelectFields.asp?Table_ID=236&DB_Short_Name=On-Time), normally referenced for out-of-memory calculations, is 100M+ record long.  
-    + Engineering challenge to deal with such a large dataset.
+* It is a big dataset by public data standards.  
+    + The [flight delay dataset](http://www.transtats.bts.gov/DL_SelectFields.asp?Table_ID=236&DB_Short_Name=On-Time), normally referenced for out-of-memory calculations, is 100M+ records long.  
+    + It was an engineering challenge to deal with such a large dataset.
 * Structure:  
     + Trip dataset  
     + Fare dataset  
-* Very granular: timestamp, longitude of pickup and dropoff locations.  
+* Very granular: timestamp, longitude and latitude of pickup and dropoff locations.  
 * The data was relatively clean to begin with, except for a few cases like trips to the North Pole, the middle of the Atlantic Ocean, or that took no time at all. 
 
 ## What does the data look like?
@@ -47,13 +47,17 @@ Chris Whong accidentally learnt about this dataset and then followed suit with a
 I worked on a sample of the dataset
 Here are some salient features that I have used in my analysis
 show how:
-- total amount is broken down (interesting applications about taxes, tips). how to change peoples' decisions.
+- fare amount: the meter fare, it should include the Newark surcharge, in USD.
+- surcharge: Extra fees, such as rush hour and overnight surcharges, in USD.
+- mta tax: Metropolitan commuter transportation mobility tax, in USD.
+- tip amount: tip amount, in USD.
+- tolls amount: total price paid for tolls.
 - geo-time dimensions
 - show a few extra records
-
 map:
 - on the web, but it is slower. run locally 
 </div>
+
 ```{r, echo=FALSE, message=FALSE}
 library(DT)
 library(magrittr)
@@ -72,7 +76,7 @@ ny = c(lon = mean(ggmap_df$pickup_longitude), lat =  mean(ggmap_df$pickup_latitu
 ny.map = get_map(location = ny, zoom = 13, color = "bw")
 ggmap(ny.map) + geom_density2d(data = ggmap_df, aes(x = pickup_longitude, y = pickup_latitude), size = 0.3) + #, extent = "device"
   stat_density2d(data = ggmap_df, aes(x = pickup_longitude, y = pickup_latitude, fill = ..level.., alpha = ..level..), size = 0.01, bins = 16, geom = "polygon") +
-  scale_fill_gradient(low = "green", high = "red", guide = FALSE) + scale_alpha(range = c(0, 0.3), guide = FALSE)
+  scale_fill_gradient(low = "green", high = "red", guide = FALSE) + scale_alpha(range = c(0, 0.3), guide = FALSE) + xlab('longitude') + ylab('latitude')
 ```
 
 ## Daily trip load curve {.smaller .flexbox .vcenter}
@@ -130,6 +134,7 @@ similar problem to optimizing water storage (dam) for electricity production or 
 
 
 ## Clustering pickup locations
+
 ```{r, echo=FALSE, message=FALSE, fig.width = 10, fig.height = 4.5}
 #df[sample(nrow(df), 1e4),] %>%
 #  select(pickup_longitude, pickup_latitude, cluster_pickup) %>%
@@ -145,6 +150,7 @@ similar problem to optimizing water storage (dam) for electricity production or 
 #addCircleMarkers(
 #  color = ~pal(cluster),
 #  stroke = FALSE, fillOpacity = 0.5)
+library(leaflet)
 readRDS('./cluster_leaf.RDS')
 ``` 
 
@@ -160,12 +166,12 @@ I developed **two algorithms**:
 Input:  
 1. 'beg_of_day'. When the working day begins.  
 2. 'end_of_day'. When the working day ends.  
-3. 'home_cluster'. Which location cluster the taxi driver would like to end the day.  
+3. 'home_cluster'. Which location cluster the taxi driver would like to end the day in.  
 4. 'minute_range'. Factor in some tolerance for target end time of each ride.  
 
 ```{r, echo = TRUE, eval = FALSE}
-beg_of_day <- as.POSIXct(strptime('2013-01-16 17:00:00', format = "%Y-%m-%d %H:%M:%S"))
-end_of_day <- as.POSIXct(strptime('2013-01-16 18:00:00', format = "%Y-%m-%d %H:%M:%S"))
+beg_of_day <- as.POSIXct(strptime('2013-01-17 07:00:00', format = "%Y-%m-%d %H:%M:%S"))
+end_of_day <- as.POSIXct(strptime('2013-01-17 10:00:00', format = "%Y-%m-%d %H:%M:%S"))
 home_cluster <- 6
 minute_range <- 5
 ```
@@ -189,7 +195,7 @@ Repeat until beginning time is reached:
 * Else:  
     + Compute transition matrix  
     + Choose origin that maximises expected profit given pre-calculated destination from previous step  
-    + Write result out.  
+    + Write result out  
 
 ## Example of optimal solution results
 
@@ -236,7 +242,7 @@ links$dest_cluster <- as.integer(as.integer(links$dest_cluster)-1)
 nodes <- data.frame(name = (1:6), group = (1:6))
 forceNetwork(Links = links, Nodes = nodes, Source = "orig_cluster",
              Target = "dest_cluster", Value = "n", NodeID = "name",
-             Group = "group", opacity = 1, height = 700, width = 700
+             Group = "group", opacity = 1, #height = 700, width = 700
              , linkDistance = 100)
 ```  
 
@@ -257,28 +263,26 @@ forceNetwork(Links = links, Nodes = nodes, Source = "orig_cluster",
 <div class="blue2">**More difficult**</div>  
 
 * **How often to re-optimize?**  
-    + Not an easy dynamic programming question.  
-    + Some good heuristic may be inferred from the data, but analytical solution is tougher.  
+    + Not an easy dynamic programming question  
+    + Some good heuristic may be inferred from the data, but analytical solution is tougher  
 * **Include risk aversion in the calculations**
-    + Do not just maximise profit, but the route that gives the optimal {profit, variance(profit)} tradeoff given the taxi driver preferences
+    + Do not just maximise profit, but choose the route that gives the optimal {profit, variance(profit)} tradeoff given the taxi driver preferences
 
 ## Potential applications  
-As far as I can tell, [Uber](https://www.uber.com/features) does not disclose information about the passenger destination at ping time. Reasons:  
-
+As far as I can tell, [Uber](https://www.uber.com/features) does not disclose information about passenger destination at ping time. <div class="blue2">Reasons:</div>  
+  
 1. Avoid ride 'cherry-picking'.  
-2. Cover the low end of the market (e.g. $5 ride).  
+2. Cover the low end of the market (e.g. $5 rides).  
 
-A counter-argument is that freer information leads to a better market allocation. Intuition:  
-
+A counter-argument is that freer information leads to a better market allocation. <div class="blue2">Intuition:</div>  
+  
 1. Decrease supply of unprofitable rides ($5 >> $8).  
 2. Increase supply of profitable rides ($45 >> $40).  
 
-Besides there is no point in asking a drive to take on negtive profit rides.
-
-With the appropriate data, which is the case for NYC, my algorithm could help Uber and other drivers make the decision whether to accept a ride ex-ante, based on expected profit calculations.  
+With the appropriate data, which is the case for NYC, my algorithm could help Uber and other drivers make the decision as to whether to accept a ride ex-ante, based on expected profit calculations.  
 
 ## Code  {.flexbox .vcenter}
-* Code used to download, clean, analyse, visualize, and present this dataset can be found on [GitHub](https://github.com/gballardin/nytaxi).  
+* Code used to download, clean, analyze, visualize, and present this dataset can be found on [GitHub](https://github.com/gballardin/nytaxi).  
 * Feel free to peruse, fork, and play with this dataset.
 
 ![Octocat](Octocat.png)
